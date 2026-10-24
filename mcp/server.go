@@ -261,9 +261,6 @@ func NewServer(impl *Implementation, options *ServerOptions) *Server {
 
 	if opts.Tasks != nil {
 		tasks := *opts.Tasks
-		if tasks.PollInterval == 0 {
-			tasks.PollInterval = defaultTaskPollInterval
-		}
 		if tasks.Retention == 0 {
 			tasks.Retention = defaultTaskRetention
 		}

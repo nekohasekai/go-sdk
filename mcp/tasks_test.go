@@ -10,6 +10,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -29,7 +30,7 @@ type doubleOutput struct {
 
 func newTaskServer(opts *TaskOptions) *Server {
 	if opts == nil {
-		opts = &TaskOptions{PollInterval: 10 * time.Millisecond}
+		opts = &TaskOptions{PollInterval: func(*CallToolRequest) time.Duration { return 10 * time.Millisecond }}
 	}
 	return NewServer(testImpl, &ServerOptions{Tasks: opts})
 }
@@ -138,7 +139,7 @@ func TestTaskSynchronousWithoutExtension(t *testing.T) {
 func TestTaskManualPolling(t *testing.T) {
 	release := make(chan struct{})
 	ids := make(chan string, 1)
-	srv := newTaskServer(&TaskOptions{PollInterval: 250 * time.Millisecond, Retention: time.Minute})
+	srv := newTaskServer(&TaskOptions{PollInterval: func(*CallToolRequest) time.Duration { return 250 * time.Millisecond }, Retention: time.Minute})
 	addDoubleTool(srv, release, ids)
 	cs := mustConnect(t, srv, &ClientOptions{Tasks: &ClientTaskOptions{DisablePolling: true}})
 	ctx := t.Context()
@@ -424,7 +425,11 @@ func TestTaskNotifications(t *testing.T) {
 func TestTaskStreamable(t *testing.T) {
 	release := make(chan struct{})
 	ids := make(chan string, 1)
-	srv := newTaskServer(nil)
+	remoteAddrs := make(chan string, 1)
+	srv := newTaskServer(&TaskOptions{PollInterval: func(req *CallToolRequest) time.Duration {
+		remoteAddrs <- req.Extra.RemoteAddr
+		return 10 * time.Millisecond
+	}})
 	addDoubleTool(srv, release, ids)
 	handler := NewStreamableHTTPHandler(func(*http.Request) *Server { return srv }, &StreamableHTTPOptions{Stateless: true})
 	var mu sync.Mutex
@@ -454,6 +459,9 @@ func TestTaskStreamable(t *testing.T) {
 	}
 	if got := textOf(t, res); got != `{"double":6}` {
 		t.Errorf("result %s, want %s", got, `{"double":6}`)
+	}
+	if remoteAddr := <-remoteAddrs; !netip.MustParseAddrPort(remoteAddr).Addr().IsLoopback() {
+		t.Errorf("poll interval chosen for remote address %q, want a loopback address", remoteAddr)
 	}
 	id := <-ids
 	mu.Lock()

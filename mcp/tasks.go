@@ -169,9 +169,10 @@ func requestUserID(extra *RequestExtra) string {
 // TaskOptions configures the tasks extension on a server. See
 // [ServerOptions.Tasks].
 type TaskOptions struct {
-	// PollInterval is the polling interval suggested to clients.
-	// If zero, it defaults to one second.
-	PollInterval time.Duration
+	// PollInterval, if set, returns the polling interval suggested to the
+	// client for the task that req starts. If it is nil or returns zero, no
+	// interval is suggested.
+	PollInterval func(req *CallToolRequest) time.Duration
 	// Retention is how long a task stays retrievable after it completes,
 	// fails or is cancelled. If zero, it defaults to ten minutes. Until then,
 	// a task reports an unlimited time to live.
@@ -396,6 +397,10 @@ func newServerTask(ctx context.Context, req *CallToolRequest) (*ServerTask, cont
 	if s.opts.Tasks == nil || !declaresTasks(req.ClientCapabilities()) {
 		return &ServerTask{session: req.Session}, ctx
 	}
+	var pollInterval time.Duration
+	if s.opts.Tasks.PollInterval != nil {
+		pollInterval = s.opts.Tasks.PollInterval(req)
+	}
 	ctx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	t := &ServerTask{
@@ -407,7 +412,7 @@ func newServerTask(ctx context.Context, req *CallToolRequest) (*ServerTask, cont
 			Status:         TaskStatusWorking,
 			CreatedAt:      now,
 			LastUpdatedAt:  now,
-			PollIntervalMs: int(s.opts.Tasks.PollInterval.Milliseconds()),
+			PollIntervalMs: int(pollInterval.Milliseconds()),
 		},
 		pending:     make(map[string]pendingInput),
 		used:        make(map[string]bool),
