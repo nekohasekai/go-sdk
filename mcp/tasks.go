@@ -176,12 +176,6 @@ type TaskOptions struct {
 	// fails or is cancelled. If zero, it defaults to ten minutes. Until then,
 	// a task reports an unlimited time to live.
 	Retention time.Duration
-	// CreateAfter is how long a call runs before it is answered with a task.
-	// A call that ends sooner is answered with its result, as without tasks,
-	// so that short calls cost the client no polling. A call that asks for
-	// input with [ServerTask.RequestInput] is answered with a task at once.
-	// If zero, every call that has not ended is answered with a task.
-	CreateAfter time.Duration
 }
 
 // A ServerTask is the server side of a tool call started with [StartTask] or
@@ -197,14 +191,8 @@ type ServerTask struct {
 	// notifyMu orders each change with the notifications that report it.
 	notifyMu sync.Mutex
 
-	// inputAsked is closed by the first RequestInput, which ends the wait
-	// of CreateAfter.
-	inputAsked chan struct{}
-
 	mu          sync.Mutex
 	task        Task
-	handedOut   bool // the client was answered with the task
-	asked       bool // inputAsked is closed
 	result      *CallToolResult
 	err         *jsonrpc.Error
 	pending     map[string]pendingInput
@@ -284,10 +272,6 @@ func (t *ServerTask) RequestInput(ctx context.Context, requests InputRequestMap)
 			t.pending[key] = pendingInput{request, w}
 		}
 		t.task.Status = TaskStatusInputRequired
-		if !t.asked {
-			t.asked = true
-			close(t.inputAsked)
-		}
 		return true
 	})
 	if err != nil {
@@ -425,7 +409,6 @@ func newServerTask(ctx context.Context, req *CallToolRequest) (*ServerTask, cont
 			LastUpdatedAt:  now,
 			PollIntervalMs: int(s.opts.Tasks.PollInterval.Milliseconds()),
 		},
-		inputAsked:  make(chan struct{}),
 		pending:     make(map[string]pendingInput),
 		used:        make(map[string]bool),
 		subscribers: make(map[*ServerSession]jsonrpc.ID),
@@ -438,24 +421,23 @@ func newServerTask(ctx context.Context, req *CallToolRequest) (*ServerTask, cont
 
 // StartTask runs a tool call as a task when the server enables
 // [ServerOptions.Tasks] and the client declares the tasks extension on req.
-// Unless run ends within [TaskOptions.CreateAfter], the returned result is
-// then the task handle for the tool handler to return, and run continues in
-// the background with a context that is independent of the request and is
-// cancelled when the client cancels the task.
+// The returned result is then the task handle for the tool handler to
+// return, and run continues in the background with a context that is
+// independent of the request and is cancelled when the client cancels the
+// task.
 //
-// Otherwise, StartTask returns the results of run, which it calls
-// synchronously when tasks are not enabled.
+// Otherwise, StartTask calls run synchronously and returns its results.
 //
 // run reports its outcome as a [ToolHandler] does: its result completes the
 // task, and its error fails the task with a JSON-RPC error.
 func StartTask(ctx context.Context, req *CallToolRequest, run func(context.Context, *ServerTask) (*CallToolResult, error)) (*CallToolResult, error) {
-	res, _, err := startTask(ctx, req, func(ctx context.Context, t *ServerTask) (*CallToolResult, any, error) {
-		res, err := run(ctx, t)
-		return res, nil, err
-	}, func(res *CallToolResult, _ any, err error) (*CallToolResult, error) {
-		return res, err
-	})
-	return res, err
+	t, ctx := newServerTask(ctx, req)
+	if t.server == nil {
+		return run(ctx, t)
+	}
+	created := t.task
+	go func() { t.complete(run(ctx, t)) }()
+	return &CallToolResult{task: &created}, nil
 }
 
 type toolResultKey struct{}
@@ -468,65 +450,12 @@ func StartTaskFor[Out any](ctx context.Context, req *CallToolRequest, run func(c
 	if !ok {
 		panic(fmt.Sprintf("StartTaskFor[%v] called outside a ToolHandlerFor with that output type", reflect.TypeFor[Out]()))
 	}
-	return startTask(ctx, req, run, toolResult)
-}
-
-// startTask runs run as a task, and returns the results of run if it ends
-// before the task is handed out. Otherwise, toolResult turns those results
-// into the result of the task.
-func startTask[Out any](ctx context.Context, req *CallToolRequest, run func(context.Context, *ServerTask) (*CallToolResult, Out, error), toolResult func(*CallToolResult, Out, error) (*CallToolResult, error)) (*CallToolResult, Out, error) {
-	t, taskCtx := newServerTask(ctx, req)
+	t, ctx := newServerTask(ctx, req)
 	if t.server == nil {
 		return run(ctx, t)
 	}
-	type outcome struct {
-		res *CallToolResult
-		out Out
-		err error
-	}
-	ended := make(chan outcome, 1)
-	go func() {
-		res, out, err := run(taskCtx, t)
-		t.mu.Lock()
-		handedOut := t.handedOut
-		if !handedOut {
-			ended <- outcome{res, out, err}
-		}
-		t.mu.Unlock()
-		if handedOut {
-			t.complete(toolResult(res, out, err))
-		}
-	}()
-	discard := func(o outcome) (*CallToolResult, Out, error) {
-		t.cancel()
-		t.server.tasksMu.Lock()
-		delete(t.server.tasks, t.task.TaskID)
-		t.server.tasksMu.Unlock()
-		return o.res, o.out, o.err
-	}
-	if wait := t.server.opts.Tasks.CreateAfter; wait > 0 {
-		timer := time.NewTimer(wait)
-		defer timer.Stop()
-		select {
-		case o := <-ended:
-			return discard(o)
-		case <-ctx.Done():
-			t.cancel()
-			return discard(<-ended)
-		case <-t.inputAsked:
-		case <-timer.C:
-		}
-	}
-	t.mu.Lock()
-	select {
-	case o := <-ended:
-		t.mu.Unlock()
-		return discard(o)
-	default:
-	}
-	t.handedOut = true
 	created := t.task
-	t.mu.Unlock()
+	go func() { t.complete(toolResult(run(ctx, t))) }()
 	var zero Out
 	return &CallToolResult{task: &created}, zero, nil
 }
