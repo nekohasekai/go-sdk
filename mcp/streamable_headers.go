@@ -49,6 +49,11 @@ func extractName(method string, params json.RawMessage) (string, bool) {
 		if err := internaljson.Unmarshal(params, &p); err == nil {
 			return p.URI, true
 		}
+	case methodGetTask, methodUpdateTask, methodCancelTask:
+		var p GetTaskParams
+		if err := internaljson.Unmarshal(params, &p); err == nil {
+			return p.TaskID, true
+		}
 	}
 
 	return "", false

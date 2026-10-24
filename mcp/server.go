@@ -67,6 +67,9 @@ type Server struct {
 	// serverMethodInfos) plus any custom methods registered via
 	// [AddReceivingCustomMethod].
 	receiveMethods map[string]methodInfo
+
+	tasksMu sync.Mutex
+	tasks   map[string]*ServerTask // task ID -> task, when opts.Tasks is set
 }
 
 // ServerOptions is used to configure behavior of the server.
@@ -198,6 +201,12 @@ type ServerOptions struct {
 	// the newest handshake-era version, so that the client disconnects rather
 	// than reading the answer as a negotiation into the new protocol.
 	SupportedProtocolVersions []string
+
+	// Tasks, if non-nil, enables the tasks extension ([TasksExtensionID]): the
+	// server declares it in its capabilities, and serves "tasks/get",
+	// "tasks/update", "tasks/cancel" and task notifications for the tool
+	// calls that handlers run with [StartTask] or [StartTaskFor].
+	Tasks *TaskOptions
 }
 
 // NewServer creates a new MCP server. The resulting server has no features:
@@ -250,6 +259,17 @@ func NewServer(impl *Implementation, options *ServerOptions) *Server {
 		opts.Logger = ensureLogger(nil)
 	}
 
+	if opts.Tasks != nil {
+		tasks := *opts.Tasks
+		if tasks.PollInterval == 0 {
+			tasks.PollInterval = defaultTaskPollInterval
+		}
+		if tasks.Retention == 0 {
+			tasks.Retention = defaultTaskRetention
+		}
+		opts.Tasks = &tasks
+	}
+
 	receiveMethods := make(map[string]methodInfo, len(serverMethodInfos))
 	maps.Copy(receiveMethods, serverMethodInfos)
 
@@ -269,6 +289,7 @@ func NewServer(impl *Implementation, options *ServerOptions) *Server {
 		resourceSubscriptions:       make(map[string]map[*ServerSession]jsonrpc.ID),
 		pendingNotifications:        make(map[string]*time.Timer),
 		receiveMethods:              receiveMethods,
+		tasks:                       make(map[string]*ServerTask),
 	}
 	s.AddReceivingMiddleware(serverMultiRoundTripMiddleware())
 	return s
@@ -395,32 +416,8 @@ func toolForErr[In, Out any](t *Tool, h ToolHandlerFor[In, Out], cache *SchemaCa
 		}
 	}
 
-	th := func(ctx context.Context, req *CallToolRequest) (*CallToolResult, error) {
-		var input json.RawMessage
-		if req.Params.Arguments != nil {
-			input = req.Params.Arguments
-		}
-		// Validate input and apply defaults.
-		var err error
-		input, err = applySchema(input, inputResolved, false)
-		if err != nil {
-			var errRes CallToolResult
-			errRes.SetError(fmt.Errorf("validating \"arguments\": %v", err))
-			return &errRes, nil
-		}
-
-		// Unmarshal and validate args.
-		var in In
-		if input != nil {
-			if err := internaljson.Unmarshal(input, &in); err != nil {
-				var errRes CallToolResult
-				errRes.SetError(err)
-				return &errRes, nil
-			}
-		}
-
-		// Call typed handler.
-		res, out, err := h(ctx, req, in)
+	// toolResult turns the results of h into the result of the tool call.
+	toolResult := func(res *CallToolResult, out Out, err error) (*CallToolResult, error) {
 		// Handle server errors appropriately:
 		// - If the handler returns a structured error (like jsonrpc.Error), return it directly
 		// - If the handler returns a regular error, wrap it in a CallToolResult with IsError=true
@@ -490,6 +487,37 @@ func toolForErr[In, Out any](t *Tool, h ToolHandlerFor[In, Out], cache *SchemaCa
 			}
 		}
 		return res, nil
+	}
+
+	th := func(ctx context.Context, req *CallToolRequest) (*CallToolResult, error) {
+		var input json.RawMessage
+		if req.Params.Arguments != nil {
+			input = req.Params.Arguments
+		}
+		// Validate input and apply defaults.
+		var err error
+		input, err = applySchema(input, inputResolved, false)
+		if err != nil {
+			var errRes CallToolResult
+			errRes.SetError(fmt.Errorf("validating \"arguments\": %v", err))
+			return &errRes, nil
+		}
+
+		// Unmarshal and validate args.
+		var in In
+		if input != nil {
+			if err := internaljson.Unmarshal(input, &in); err != nil {
+				var errRes CallToolResult
+				errRes.SetError(err)
+				return &errRes, nil
+			}
+		}
+
+		res, out, err := h(context.WithValue(ctx, toolResultKey{}, toolResult), req, in)
+		if err == nil && res != nil && res.task != nil {
+			return res, nil
+		}
+		return toolResult(res, out, err)
 	} // end of handler
 
 	return &tt, th, nil
@@ -703,6 +731,12 @@ func (s *Server) capabilities() *ServerCapabilities {
 	if s.opts.CompletionHandler != nil {
 		if caps.Completions == nil {
 			caps.Completions = &CompletionCapabilities{}
+		}
+	}
+
+	if s.opts.Tasks != nil {
+		if _, ok := caps.Extensions[TasksExtensionID]; !ok {
+			caps.AddExtension(TasksExtensionID, nil)
 		}
 	}
 
@@ -1067,7 +1101,7 @@ func (s *Server) callTool(ctx context.Context, req *CallToolRequest) (*CallToolR
 		if err := validateMultiRoundTripResult(s.opts.Logger, res); err != nil {
 			return nil, err
 		}
-		if res.Content == nil && !asksForInput(res) {
+		if res.Content == nil && !asksForInput(res) && res.task == nil {
 			res2 := *res
 			res2.Content = []Content{} // avoid "null"
 			res = &res2
@@ -1326,6 +1360,18 @@ func (s *Server) subscriptionsListen(ctx context.Context, req *SubscriptionsList
 	}
 
 	allowed := s.allowedSubscriptions(req.Params.Notifications)
+	var tasks []*ServerTask
+	if ids := req.Params.Notifications.TaskIDs; len(ids) > 0 && s.opts.Tasks != nil {
+		if !declaresTasks(req.ClientCapabilities()) {
+			return nil, errMissingTasksCapability
+		}
+		for _, id := range ids {
+			if t, err := lookupTask(s, req, id); err == nil && !slices.Contains(tasks, t) {
+				tasks = append(tasks, t)
+				allowed.TaskIDs = append(allowed.TaskIDs, id)
+			}
+		}
+	}
 	s.mu.Lock()
 	if allowed.ToolsListChanged {
 		s.toolChangeSubscriptions[req.Session] = requestID
@@ -1382,8 +1428,31 @@ func (s *Server) subscriptionsListen(ctx context.Context, req *SubscriptionsList
 		return nil, fmt.Errorf("sending subscriptions/acknowledged: %w", err)
 	}
 
+	// Each task is first reported as it is now. Holding notifyMu keeps a
+	// concurrent change from being reported before that state.
+	for _, t := range tasks {
+		t.notifyMu.Lock()
+		t.mu.Lock()
+		t.subscribers[req.Session] = requestID
+		snapshot := t.snapshotLocked()
+		t.mu.Unlock()
+		s.notifySubscribedSessions(map[*ServerSession]jsonrpc.ID{req.Session: requestID}, notificationTasks, func() Params {
+			return &TaskStatusNotificationParams{Task: snapshot}
+		})
+		t.notifyMu.Unlock()
+	}
+	defer func() {
+		for _, t := range tasks {
+			t.mu.Lock()
+			if t.subscribers[req.Session] == requestID {
+				delete(t.subscribers, req.Session)
+			}
+			t.mu.Unlock()
+		}
+	}()
+
 	// If there are any active subscriptions, we block until the context is cancelled. Otherwise, we return immediately.
-	if len(allowed.ResourceSubscriptions) > 0 || allowed.ToolsListChanged || allowed.PromptsListChanged || allowed.ResourcesListChanged {
+	if len(allowed.ResourceSubscriptions) > 0 || allowed.ToolsListChanged || allowed.PromptsListChanged || allowed.ResourcesListChanged || len(tasks) > 0 {
 		<-ctx.Done()
 	}
 	return &SubscriptionsListenResult{
@@ -1951,6 +2020,9 @@ var serverMethodInfos = map[string]methodInfo{
 	methodGetPrompt:              newServerMethodInfo(serverMethod((*Server).getPrompt), 0),
 	methodListTools:              newServerMethodInfo(serverMethod((*Server).listTools), missingParamsOK),
 	methodCallTool:               newServerMethodInfo(serverMethod((*Server).callTool), 0),
+	methodCancelTask:             newServerMethodInfo(serverMethod((*Server).cancelTask), 0),
+	methodGetTask:                newServerMethodInfo(serverMethod((*Server).getTask), 0),
+	methodUpdateTask:             newServerMethodInfo(serverMethod((*Server).updateTask), 0),
 	methodListResources:          newServerMethodInfo(serverMethod((*Server).listResources), missingParamsOK),
 	methodListResourceTemplates:  newServerMethodInfo(serverMethod((*Server).listResourceTemplates), missingParamsOK),
 	methodReadResource:           newServerMethodInfo(serverMethod((*Server).readResource), 0),

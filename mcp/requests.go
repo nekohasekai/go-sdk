@@ -8,8 +8,10 @@ package mcp
 
 type (
 	CallToolRequest                   = ServerRequest[*CallToolParamsRaw]
+	CancelTaskRequest                 = ServerRequest[*CancelTaskParams]
 	CompleteRequest                   = ServerRequest[*CompleteParams]
 	GetPromptRequest                  = ServerRequest[*GetPromptParams]
+	GetTaskRequest                    = ServerRequest[*GetTaskParams]
 	InitializedRequest                = ServerRequest[*InitializedParams]
 	ListPromptsRequest                = ServerRequest[*ListPromptsParams]
 	ListResourcesRequest              = ServerRequest[*ListResourcesParams]
@@ -21,6 +23,7 @@ type (
 	SubscribeRequest                  = ServerRequest[*SubscribeParams]
 	SubscriptionsListenRequest        = ServerRequest[*SubscriptionsListenParams]
 	UnsubscribeRequest                = ServerRequest[*UnsubscribeParams]
+	UpdateTaskRequest                 = ServerRequest[*UpdateTaskParams]
 )
 
 type (
@@ -36,6 +39,7 @@ type (
 	PromptListChangedRequest               = ClientRequest[*PromptListChangedParams]
 	ResourceListChangedRequest             = ClientRequest[*ResourceListChangedParams]
 	ResourceUpdatedNotificationRequest     = ClientRequest[*ResourceUpdatedNotificationParams]
+	TaskStatusRequest                      = ClientRequest[*TaskStatusNotificationParams]
 	ToolListChangedRequest                 = ClientRequest[*ToolListChangedParams]
 	ElicitationCompleteNotificationRequest = ClientRequest[*ElicitationCompleteParams]
 )

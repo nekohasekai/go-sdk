@@ -80,6 +80,9 @@ func NewClient(impl *Implementation, options *ClientOptions) *Client {
 	if opts.MultiRoundTrip == nil || !opts.MultiRoundTrip.Disabled {
 		c.AddSendingMiddleware(clientMultiRoundTripMiddleware())
 	}
+	if opts.Tasks != nil && !opts.Tasks.DisablePolling {
+		c.AddSendingMiddleware(clientTaskMiddleware())
+	}
 	return c
 }
 
@@ -193,6 +196,10 @@ type ClientOptions struct {
 	// By default (nil), the middleware is enabled with default settings.
 	// Set Disabled to true to opt out of automatic MultiRoundTrip handling.
 	MultiRoundTrip *MultiRoundTripOptions
+	// Tasks, if non-nil, enables the tasks extension ([TasksExtensionID]): the
+	// client declares it in its capabilities, so that a server may answer
+	// "tools/call" with a task.
+	Tasks *ClientTaskOptions
 	// If non-zero, defines an interval for regular "ping" requests.
 	// If the peer fails to respond to pings originating from the keepalive check,
 	// the session is automatically closed.
@@ -294,6 +301,12 @@ func (c *Client) capabilities(protocolVersion string) *ClientCapabilities {
 			if protocolVersion >= protocolVersion20251125 {
 				caps.Elicitation.Form = &FormElicitationCapabilities{}
 			}
+		}
+	}
+
+	if c.opts.Tasks != nil {
+		if _, ok := caps.Extensions[TasksExtensionID]; !ok {
+			caps.AddExtension(TasksExtensionID, nil)
 		}
 	}
 	return caps
@@ -1211,6 +1224,7 @@ var clientMethodInfos = map[string]methodInfo{
 	notificationProgress:            newClientMethodInfo(clientSessionMethod((*ClientSession).callProgressNotificationHandler), notification),
 	notificationElicitationComplete: newClientMethodInfo(clientMethod((*Client).callElicitationCompleteHandler), notification),
 	notificationSubscriptionsAck:    newClientMethodInfo(clientMethod((*Client).callSubscriptionsAckHandler), notification|missingParamsOK),
+	notificationTasks:               newClientMethodInfo(clientMethod((*Client).callTaskStatusHandler), notification),
 }
 
 // clientMethodInfosLegacyParams is clientMethodInfos with the pre-1.9 params

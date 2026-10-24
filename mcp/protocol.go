@@ -26,6 +26,10 @@ const (
 	// input before it can complete the request. The client should fulfill the
 	// InputRequests and retry the call with the responses.
 	resultTypeInputRequired resultType = "input_required"
+
+	// resultTypeTask indicates the result is a handle to a task that the
+	// client polls for the final result. See [CallToolResult.Task].
+	resultTypeTask resultType = "task"
 )
 
 type completeResultWithType struct {
@@ -391,6 +395,8 @@ type CallToolResult struct {
 	// means the client must fulfill InputRequests and retry.
 	// See [CallToolResult.NeedsInput].
 	resultType resultType
+	// task is set when the result is a handle to a task. See [CallToolResult.Task].
+	task *Task
 	// The error passed to setError, if any.
 	// It is not marshaled, and therefore it is only visible on the server.
 	// Its only use is in server sending middleware, where it can be accessed
@@ -439,6 +445,13 @@ func (r *CallToolResult) hasContent() bool {
 // An empty InputRequests with NeedsInput true indicates load-shedding.
 func (r *CallToolResult) NeedsInput() bool { return r.resultType == resultTypeInputRequired }
 
+// Task returns the task that the server created in place of the result, or
+// nil if the result is not a task handle.
+//
+// A client that enables [ClientOptions.Tasks] polls such a task to its end,
+// unless [ClientTaskOptions.DisablePolling] is set.
+func (r *CallToolResult) Task() *Task { return r.task }
+
 // structuredcontentfloat64 is a compatibility parameter that restores the
 // previous behavior of decoding numbers in [CallToolResult.StructuredContent]
 // as float64 values. By default, numbers are decoded as [json.Number] to avoid
@@ -446,6 +459,13 @@ func (r *CallToolResult) NeedsInput() bool { return r.resultType == resultTypeIn
 var structuredcontentfloat64 = mcpgodebug.Value("structuredcontentfloat64")
 
 func (x *CallToolResult) MarshalJSON() ([]byte, error) {
+	if x.task != nil {
+		return json.Marshal(struct {
+			Meta       `json:"_meta,omitempty"`
+			ResultType resultType `json:"resultType"`
+			Task
+		}{x.Meta, resultTypeTask, *x.task})
+	}
 	type res CallToolResult // avoid recursion
 	type wire struct {
 		res
@@ -492,6 +512,12 @@ func (x *CallToolResult) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	wire.res.resultType = wire.ResultType
+	if wire.ResultType == resultTypeTask {
+		wire.res.task = new(Task)
+		if err := internaljson.Unmarshal(data, wire.res.task); err != nil {
+			return err
+		}
+	}
 	*x = CallToolResult(wire.res)
 	return nil
 }
@@ -2181,6 +2207,9 @@ type NotificationSubscriptions struct {
 	// wants "notifications/resources/updated". Replaces the legacy
 	// resources/subscribe RPC.
 	ResourceSubscriptions []string `json:"resourceSubscriptions,omitempty"`
+	// TaskIDs enumerates the tasks for which the client wants
+	// "notifications/tasks". It requires the tasks extension ([TasksExtensionID]).
+	TaskIDs []string `json:"taskIds,omitempty"`
 }
 
 // SubscriptionsListenParams are the parameters for the
@@ -2427,6 +2456,10 @@ func (c *ServerCapabilities) clone() *ServerCapabilities {
 
 const (
 	methodCallTool                  = "tools/call"
+	methodCancelTask                = "tasks/cancel"
+	methodGetTask                   = "tasks/get"
+	methodUpdateTask                = "tasks/update"
+	notificationTasks               = "notifications/tasks"
 	notificationCancelled           = "notifications/cancelled"
 	methodComplete                  = "completion/complete"
 	methodDiscover                  = "server/discover"
