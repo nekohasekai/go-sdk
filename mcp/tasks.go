@@ -151,11 +151,21 @@ var errMissingTasksCapability = &jsonrpc.Error{
 	Data:    json.RawMessage(`{"requiredCapabilities":{"extensions":{"` + TasksExtensionID + `":{}}}}`),
 }
 
-func declaresTasks(caps *ClientCapabilities) bool {
-	if caps == nil {
+// declaresTasks reports whether req declares the tasks extension in its
+// per-request capabilities. The extension does not count what a session
+// declared when it initialized: a client that declares it there may still
+// not understand a "task" result, as clients of protocol versions before
+// 2026-07-28 do not know resultType.
+func declaresTasks[P Params](req *ServerRequest[P]) bool {
+	m := getRequestMeta(req)
+	if m == nil {
 		return false
 	}
-	_, ok := caps.Extensions[TasksExtensionID]
+	caps, ok := decodeMetaValue[*clientCapabilitiesV2](m, MetaKeyClientCapabilities)
+	if !ok || caps == nil {
+		return false
+	}
+	_, ok = caps.Extensions[TasksExtensionID]
 	return ok
 }
 
@@ -177,6 +187,10 @@ type TaskOptions struct {
 	// fails or is cancelled. If zero, it defaults to ten minutes. Until then,
 	// a task reports an unlimited time to live.
 	Retention time.Duration
+	// CreateAfter is how long a call runs before it is answered with a task.
+	// A call that ends sooner is answered with its result, as without tasks.
+	// If zero, every call is answered with a task.
+	CreateAfter time.Duration
 }
 
 // A ServerTask is the server side of a tool call started with [StartTask] or
@@ -390,11 +404,12 @@ func (t *ServerTask) endLocked(now time.Time) {
 }
 
 // newServerTask returns a task that runs synchronously within req, unless the
-// server and the client both enable tasks: then the task is registered and
-// returned with a context for running it in the background.
+// server and the client both enable tasks: then the task is returned with a
+// context for running it in the background, and is registered once it is
+// handed out.
 func newServerTask(ctx context.Context, req *CallToolRequest) (*ServerTask, context.Context) {
 	s := req.Session.server
-	if s.opts.Tasks == nil || !declaresTasks(req.ClientCapabilities()) {
+	if s.opts.Tasks == nil || !declaresTasks(req) {
 		return &ServerTask{session: req.Session}, ctx
 	}
 	var pollInterval time.Duration
@@ -418,31 +433,29 @@ func newServerTask(ctx context.Context, req *CallToolRequest) (*ServerTask, cont
 		used:        make(map[string]bool),
 		subscribers: make(map[*ServerSession]jsonrpc.ID),
 	}
-	s.tasksMu.Lock()
-	s.tasks[t.task.TaskID] = t
-	s.tasksMu.Unlock()
 	return t, ctx
 }
 
 // StartTask runs a tool call as a task when the server enables
 // [ServerOptions.Tasks] and the client declares the tasks extension on req.
-// The returned result is then the task handle for the tool handler to
-// return, and run continues in the background with a context that is
-// independent of the request and is cancelled when the client cancels the
-// task.
+// Unless run ends within [TaskOptions.CreateAfter], the returned result is
+// then the task handle for the tool handler to return, and run continues in
+// the background with a context that is independent of the request and is
+// cancelled when the client cancels the task.
 //
-// Otherwise, StartTask calls run synchronously and returns its results.
+// Otherwise, StartTask returns the results of run, which it calls
+// synchronously when tasks are not enabled.
 //
 // run reports its outcome as a [ToolHandler] does: its result completes the
 // task, and its error fails the task with a JSON-RPC error.
 func StartTask(ctx context.Context, req *CallToolRequest, run func(context.Context, *ServerTask) (*CallToolResult, error)) (*CallToolResult, error) {
-	t, ctx := newServerTask(ctx, req)
-	if t.server == nil {
-		return run(ctx, t)
-	}
-	created := t.task
-	go func() { t.complete(run(ctx, t)) }()
-	return &CallToolResult{task: &created}, nil
+	res, _, err := startTask(ctx, req, func(ctx context.Context, t *ServerTask) (*CallToolResult, any, error) {
+		res, err := run(ctx, t)
+		return res, nil, err
+	}, func(res *CallToolResult, _ any, err error) (*CallToolResult, error) {
+		return res, err
+	})
+	return res, err
 }
 
 type toolResultKey struct{}
@@ -455,12 +468,52 @@ func StartTaskFor[Out any](ctx context.Context, req *CallToolRequest, run func(c
 	if !ok {
 		panic(fmt.Sprintf("StartTaskFor[%v] called outside a ToolHandlerFor with that output type", reflect.TypeFor[Out]()))
 	}
-	t, ctx := newServerTask(ctx, req)
+	return startTask(ctx, req, run, toolResult)
+}
+
+// startTask returns the results of run if it ends within
+// [TaskOptions.CreateAfter], and otherwise hands out the task, which
+// toolResult completes with those results.
+func startTask[Out any](ctx context.Context, req *CallToolRequest, run func(context.Context, *ServerTask) (*CallToolResult, Out, error), toolResult func(*CallToolResult, Out, error) (*CallToolResult, error)) (*CallToolResult, Out, error) {
+	t, taskCtx := newServerTask(ctx, req)
 	if t.server == nil {
 		return run(ctx, t)
 	}
+	type outcome struct {
+		res *CallToolResult
+		out Out
+		err error
+	}
+	ended := make(chan outcome, 1)
+	go func() {
+		res, out, err := run(taskCtx, t)
+		ended <- outcome{res, out, err}
+	}()
+	if wait := t.server.opts.Tasks.CreateAfter; wait > 0 {
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+		select {
+		case o := <-ended:
+			t.cancel()
+			return o.res, o.out, o.err
+		case <-ctx.Done():
+			t.cancel()
+			o := <-ended
+			return o.res, o.out, o.err
+		case <-timer.C:
+		}
+	}
+	s := t.server
+	s.tasksMu.Lock()
+	s.tasks[t.task.TaskID] = t
+	s.tasksMu.Unlock()
+	t.mu.Lock()
 	created := t.task
-	go func() { t.complete(toolResult(run(ctx, t))) }()
+	t.mu.Unlock()
+	go func() {
+		o := <-ended
+		t.complete(toolResult(o.res, o.out, o.err))
+	}()
 	var zero Out
 	return &CallToolResult{task: &created}, zero, nil
 }
@@ -469,7 +522,7 @@ func lookupTask[P Params](s *Server, req *ServerRequest[P], id string) (*ServerT
 	if s.opts.Tasks == nil {
 		return nil, &jsonrpc.Error{Code: jsonrpc.CodeMethodNotFound, Message: "tasks are not enabled"}
 	}
-	if !declaresTasks(req.ClientCapabilities()) {
+	if !declaresTasks(req) {
 		return nil, errMissingTasksCapability
 	}
 	s.tasksMu.Lock()

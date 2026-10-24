@@ -1359,7 +1359,7 @@ func (s *Server) subscriptionsListen(ctx context.Context, req *SubscriptionsList
 	allowed := s.allowedSubscriptions(req.Params.Notifications)
 	var tasks []*ServerTask
 	if ids := req.Params.Notifications.TaskIDs; len(ids) > 0 && s.opts.Tasks != nil {
-		if !declaresTasks(req.ClientCapabilities()) {
+		if !declaresTasks(req) {
 			return nil, errMissingTasksCapability
 		}
 		for _, id := range ids {

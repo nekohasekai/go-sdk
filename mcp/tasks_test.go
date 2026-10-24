@@ -90,8 +90,8 @@ func TestTaskPolledToResult(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if id := <-ids; id == "" {
-				t.Error("tool call ran synchronously, want a task")
+			if id, task := <-ids, version >= protocolVersion20260728; (id != "") != task {
+				t.Errorf("tool call ran as task %q, want a task: %v", id, task)
 			}
 			if got, want := textOf(t, res), `{"double":42}`; got != want {
 				t.Errorf("result %s, want %s", got, want)
@@ -360,7 +360,7 @@ func TestTaskProtocolErrors(t *testing.T) {
 		var wireErr *jsonrpc.Error
 		errors.As(err, &wireErr)
 		var data MissingRequiredClientCapabilityData
-		if err := json.Unmarshal(wireErr.Data, &data); err != nil || !declaresTasks(data.RequiredCapabilities) {
+		if err := json.Unmarshal(wireErr.Data, &data); err != nil || data.RequiredCapabilities == nil || data.RequiredCapabilities.Extensions[TasksExtensionID] == nil {
 			t.Errorf("%s without the extension: data %s does not require the extension", name, wireErr.Data)
 		}
 	}
@@ -468,5 +468,65 @@ func TestTaskStreamable(t *testing.T) {
 	defer mu.Unlock()
 	if names[methodGetTask] != id {
 		t.Errorf("tasks/get carried Mcp-Name %q, want the task ID %q", names[methodGetTask], id)
+	}
+}
+
+func TestTaskCreateAfter(t *testing.T) {
+	const wait = 200 * time.Millisecond
+	quick := make(chan struct{})
+	close(quick)
+	ids := make(chan string, 1)
+	srv := newTaskServer(&TaskOptions{CreateAfter: wait})
+	addDoubleTool(srv, quick, ids)
+	srv.AddTool(&Tool{Name: "slow", InputSchema: &jsonschema.Schema{Type: "object"}}, func(ctx context.Context, req *CallToolRequest) (*CallToolResult, error) {
+		return StartTask(ctx, req, func(ctx context.Context, task *ServerTask) (*CallToolResult, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		})
+	})
+	srv.AddTool(&Tool{Name: "ask", InputSchema: &jsonschema.Schema{Type: "object"}}, func(ctx context.Context, req *CallToolRequest) (*CallToolResult, error) {
+		return StartTask(ctx, req, func(ctx context.Context, task *ServerTask) (*CallToolResult, error) {
+			_, err := task.RequestInput(ctx, InputRequestMap{"ok": &ElicitParams{Message: "OK?"}})
+			return nil, err
+		})
+	})
+	cs := mustConnect(t, srv, &ClientOptions{Tasks: &ClientTaskOptions{DisablePolling: true}})
+	ctx := t.Context()
+
+	res, err := cs.CallTool(ctx, &CallToolParams{Name: "double", Arguments: doubleInput{7}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-ids
+	if res.Task() != nil || textOf(t, res) != `{"double":14}` {
+		t.Errorf("quick call: got %+v, want the direct result", res)
+	}
+
+	for _, test := range []struct {
+		tool   string
+		status TaskStatus
+	}{
+		{"slow", TaskStatusWorking},
+		{"ask", TaskStatusInputRequired},
+	} {
+		started := time.Now()
+		res, err := cs.CallTool(ctx, &CallToolParams{Name: test.tool})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if elapsed := time.Since(started); elapsed < wait {
+			t.Errorf("%s: answered after %v, want after %v", test.tool, elapsed, wait)
+		}
+		task := res.Task()
+		if task == nil || task.Status != test.status {
+			t.Errorf("%s: got %+v, want a task with status %s", test.tool, res, test.status)
+			continue
+		}
+		if _, err := cs.GetTask(ctx, &GetTaskParams{TaskID: task.TaskID}); err != nil {
+			t.Errorf("%s: %v", test.tool, err)
+		}
+		if err := cs.CancelTask(ctx, &CancelTaskParams{TaskID: task.TaskID}); err != nil {
+			t.Error(err)
+		}
 	}
 }
