@@ -687,8 +687,9 @@ type ServerRequest[P Params] struct {
 // RequestExtra is extra information included in requests, typically from
 // the transport layer.
 type RequestExtra struct {
-	TokenInfo *auth.TokenInfo // bearer token info (e.g. from OAuth) if any
-	Header    http.Header     // header from HTTP request, if any
+	TokenInfo  *auth.TokenInfo // bearer token info (e.g. from OAuth) if any
+	Header     http.Header     // header from HTTP request, if any
+	RemoteAddr string          // network address of the HTTP client, if any
 
 	// If set, CloseSSEStream explicitly closes the current SSE request stream.
 	//

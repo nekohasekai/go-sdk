@@ -1789,8 +1789,9 @@ func (c *streamableServerConn) servePOST(w http.ResponseWriter, req *http.Reques
 			}
 			// Include metadata for all requests (including notifications).
 			jreq.Extra = &RequestExtra{
-				TokenInfo: tokenInfo,
-				Header:    req.Header,
+				TokenInfo:  tokenInfo,
+				Header:     req.Header,
+				RemoteAddr: req.RemoteAddr,
 			}
 			if jreq.IsCall() {
 				calls[jreq.ID] = struct{}{}
