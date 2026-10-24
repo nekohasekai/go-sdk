@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/nekohasekai/go-sdk/jsonrpc"
 )
 
 // TasksExtensionID identifies the tasks extension, which lets a server answer

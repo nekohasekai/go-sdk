@@ -19,8 +19,8 @@ import (
 	"slices"
 	"testing"
 
-	internaljson "github.com/modelcontextprotocol/go-sdk/internal/json"
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
+	internaljson "github.com/nekohasekai/go-sdk/internal/json"
+	"github.com/nekohasekai/go-sdk/oauthex"
 )
 
 type ClientInfo struct {

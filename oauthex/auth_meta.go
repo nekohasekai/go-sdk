@@ -14,7 +14,7 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/modelcontextprotocol/go-sdk/internal/authutil"
+	"github.com/nekohasekai/go-sdk/internal/authutil"
 )
 
 // AuthServerMeta represents the metadata for an OAuth 2.0 authorization server,

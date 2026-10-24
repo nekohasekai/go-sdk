@@ -17,9 +17,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/internal/authutil"
-	"github.com/modelcontextprotocol/go-sdk/internal/util"
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
+	"github.com/nekohasekai/go-sdk/internal/authutil"
+	"github.com/nekohasekai/go-sdk/internal/util"
+	"github.com/nekohasekai/go-sdk/oauthex"
 	"golang.org/x/oauth2"
 )
 

@@ -17,7 +17,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
+	"github.com/nekohasekai/go-sdk/oauthex"
 )
 
 // TokenExchangeConfig configures RFC 8693 token exchange support on a [FakeIdPServer].

@@ -13,8 +13,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/modelcontextprotocol/go-sdk/internal/oauthtest"
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
+	"github.com/nekohasekai/go-sdk/internal/oauthtest"
+	"github.com/nekohasekai/go-sdk/oauthex"
 	"golang.org/x/oauth2"
 )
 

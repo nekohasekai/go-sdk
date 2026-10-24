@@ -12,7 +12,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
+	"github.com/nekohasekai/go-sdk/oauthex"
 )
 
 // GetAuthServerMetadata fetches authorization server metadata for the given issuer URL.

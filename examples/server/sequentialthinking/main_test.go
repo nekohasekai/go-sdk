@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/nekohasekai/go-sdk/mcp"
 )
 
 func TestStartThinking(t *testing.T) {

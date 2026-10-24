@@ -15,8 +15,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/internal/jsonrpc2"
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/nekohasekai/go-sdk/internal/jsonrpc2"
+	"github.com/nekohasekai/go-sdk/jsonrpc"
 )
 
 func TestBatchFraming(t *testing.T) {

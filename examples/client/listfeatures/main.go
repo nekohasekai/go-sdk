@@ -8,7 +8,7 @@
 //
 // For example:
 //
-//	listfeatures go run github.com/modelcontextprotocol/go-sdk/examples/server/hello
+//	listfeatures go run github.com/nekohasekai/go-sdk/examples/server/hello
 //
 // or
 //
@@ -24,7 +24,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/nekohasekai/go-sdk/mcp"
 )
 
 var (
@@ -39,7 +39,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Usage: listfeatures --http=\"https://example.com/server/mcp\"")
 		fmt.Fprintln(os.Stderr, "List all features for a stdio MCP server")
 		fmt.Fprintln(os.Stderr)
-		fmt.Fprintln(os.Stderr, "Example:\n\tlistfeatures go run github.com/modelcontextprotocol/go-sdk/examples/server/hello")
+		fmt.Fprintln(os.Stderr, "Example:\n\tlistfeatures go run github.com/nekohasekai/go-sdk/examples/server/hello")
 		os.Exit(2)
 	}
 

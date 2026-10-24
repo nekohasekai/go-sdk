@@ -19,10 +19,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/modelcontextprotocol/go-sdk/auth"
-	"github.com/modelcontextprotocol/go-sdk/auth/extauth"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
+	"github.com/nekohasekai/go-sdk/auth"
+	"github.com/nekohasekai/go-sdk/auth/extauth"
+	"github.com/nekohasekai/go-sdk/mcp"
+	"github.com/nekohasekai/go-sdk/oauthex"
 )
 
 // scenarioHandler is the function signature for all conformance test scenarios.

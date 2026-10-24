@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
+	"github.com/nekohasekai/go-sdk/oauthex"
 )
 
 func TestVerify(t *testing.T) {

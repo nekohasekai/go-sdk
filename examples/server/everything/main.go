@@ -23,7 +23,7 @@ import (
 	"sync/atomic"
 
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/nekohasekai/go-sdk/mcp"
 )
 
 var (

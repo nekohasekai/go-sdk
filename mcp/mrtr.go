@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"sync"
 
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/nekohasekai/go-sdk/jsonrpc"
 	"golang.org/x/sync/errgroup"
 )
 

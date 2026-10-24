@@ -30,13 +30,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/auth"
-	internaljson "github.com/modelcontextprotocol/go-sdk/internal/json"
-	"github.com/modelcontextprotocol/go-sdk/internal/jsonrpc2"
-	"github.com/modelcontextprotocol/go-sdk/internal/mcpgodebug"
-	"github.com/modelcontextprotocol/go-sdk/internal/util"
-	"github.com/modelcontextprotocol/go-sdk/internal/xcontext"
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/nekohasekai/go-sdk/auth"
+	internaljson "github.com/nekohasekai/go-sdk/internal/json"
+	"github.com/nekohasekai/go-sdk/internal/jsonrpc2"
+	"github.com/nekohasekai/go-sdk/internal/mcpgodebug"
+	"github.com/nekohasekai/go-sdk/internal/util"
+	"github.com/nekohasekai/go-sdk/internal/xcontext"
+	"github.com/nekohasekai/go-sdk/jsonrpc"
 	"golang.org/x/oauth2"
 )
 

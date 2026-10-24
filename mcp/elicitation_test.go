@@ -12,8 +12,8 @@ import (
 	"testing/synctest"
 
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/modelcontextprotocol/go-sdk/internal/jsonrpc2"
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/nekohasekai/go-sdk/internal/jsonrpc2"
+	"github.com/nekohasekai/go-sdk/jsonrpc"
 )
 
 // TODO: migrate other elicitation tests here.

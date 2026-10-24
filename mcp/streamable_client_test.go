@@ -19,11 +19,11 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/modelcontextprotocol/go-sdk/auth"
-	"github.com/modelcontextprotocol/go-sdk/internal/jsonrpc2"
-	"github.com/modelcontextprotocol/go-sdk/internal/oauthtest"
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
+	"github.com/nekohasekai/go-sdk/auth"
+	"github.com/nekohasekai/go-sdk/internal/jsonrpc2"
+	"github.com/nekohasekai/go-sdk/internal/oauthtest"
+	"github.com/nekohasekai/go-sdk/jsonrpc"
+	"github.com/nekohasekai/go-sdk/oauthex"
 	"golang.org/x/oauth2"
 )
 

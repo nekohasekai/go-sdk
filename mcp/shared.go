@@ -24,11 +24,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/auth"
-	internaljson "github.com/modelcontextprotocol/go-sdk/internal/json"
-	"github.com/modelcontextprotocol/go-sdk/internal/jsonrpc2"
-	"github.com/modelcontextprotocol/go-sdk/internal/mcpgodebug"
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/nekohasekai/go-sdk/auth"
+	internaljson "github.com/nekohasekai/go-sdk/internal/json"
+	"github.com/nekohasekai/go-sdk/internal/jsonrpc2"
+	"github.com/nekohasekai/go-sdk/internal/mcpgodebug"
+	"github.com/nekohasekai/go-sdk/jsonrpc"
 )
 
 // nowrapinvalidparams is a compatibility parameter that restores the previous

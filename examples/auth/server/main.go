@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/auth"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/modelcontextprotocol/go-sdk/oauthex"
+	"github.com/nekohasekai/go-sdk/auth"
+	"github.com/nekohasekai/go-sdk/mcp"
+	"github.com/nekohasekai/go-sdk/oauthex"
 )
 
 // Flags.

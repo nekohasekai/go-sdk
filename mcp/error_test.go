@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/nekohasekai/go-sdk/jsonrpc"
 )
 
 // TestServerErrors validates that the server returns appropriate error codes

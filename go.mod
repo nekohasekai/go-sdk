@@ -1,4 +1,4 @@
-module github.com/modelcontextprotocol/go-sdk
+module github.com/nekohasekai/go-sdk
 
 go 1.25.0
 

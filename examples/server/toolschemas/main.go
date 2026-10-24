@@ -14,7 +14,7 @@ import (
 	"log"
 
 	"github.com/google/jsonschema-go/jsonschema"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/nekohasekai/go-sdk/mcp"
 )
 
 // Input is the input into all the tools handlers below.

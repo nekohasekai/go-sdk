@@ -10,7 +10,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/modelcontextprotocol/go-sdk/internal/mcpgodebug"
+	"github.com/nekohasekai/go-sdk/internal/mcpgodebug"
 )
 
 // followallredirects is a compatibility parameter that restores the previous

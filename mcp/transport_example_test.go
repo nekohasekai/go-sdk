@@ -12,7 +12,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/nekohasekai/go-sdk/mcp"
 )
 
 // !+loggingtransport

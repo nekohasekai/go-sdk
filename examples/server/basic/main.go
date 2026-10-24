@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/nekohasekai/go-sdk/mcp"
 )
 
 type SayHiParams struct {

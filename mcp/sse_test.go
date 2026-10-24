@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/modelcontextprotocol/go-sdk/jsonrpc"
+	"github.com/nekohasekai/go-sdk/jsonrpc"
 )
 
 // TestSSEServerTransport_SupportedVersions verifies that the deprecated

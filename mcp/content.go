@@ -11,7 +11,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	internaljson "github.com/modelcontextprotocol/go-sdk/internal/json"
+	internaljson "github.com/nekohasekai/go-sdk/internal/json"
 )
 
 // A Content is a [TextContent], [ImageContent], [AudioContent],
